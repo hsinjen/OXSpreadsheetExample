@@ -26,9 +26,51 @@ namespace OXSpreadsheetExample
             try
             {
                 _document = SpreadsheetDocument.Create(Filename, SpreadsheetDocumentType.Workbook);
-                _document.AddWorkbookPart();
+                WorkbookPart wbp = _document.AddWorkbookPart();
                 _document.WorkbookPart.Workbook = new DocumentFormat.OpenXml.Spreadsheet.Workbook();
                 _document.WorkbookPart.Workbook.Sheets = new DocumentFormat.OpenXml.Spreadsheet.Sheets();
+
+                WorkbookStylesPart wbsp = wbp.AddNewPart<WorkbookStylesPart>();
+                // add styles to sheet
+                wbsp.Stylesheet = CreateStylesheet();
+                wbsp.Stylesheet.Save();
+
+                //========== 定義 WorkBook 相容層級
+                //WorkbookStylesPart workbookStylesPart = _document.WorkbookPart.AddNewPart<WorkbookStylesPart>("rIdStyles");
+                //Stylesheet stylesheet = new Stylesheet() { MCAttributes = new MarkupCompatibilityAttributes() { Ignorable = "x14ac" } };
+                //stylesheet.AddNamespaceDeclaration("mc", "http://schemas.openxmlformats.org/markup-compatibility/2006");
+                //stylesheet.AddNamespaceDeclaration("x14ac", "http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac");
+
+                ////========== 宣告字型
+                //Fonts fonts1 = new Fonts() { Count = (UInt32Value)1U, KnownFonts = true };
+                //Font font1 = new Font();
+                ////========== 定義字型大小
+                //FontSize fontSize1 = new FontSize() { Val = new DoubleValue(_font_size).Value };
+                ////========== 定義字型大小
+                //Color color1 = new Color() { Theme = (UInt32Value)1U };
+                ////========== 定義字型
+                //FontName fontName1 = new FontName() { Val = _font.Name };
+                //FontFamilyNumbering fontFamilyNumbering1 = new FontFamilyNumbering() { Val = 2 };
+                //FontScheme fontScheme1 = new FontScheme() { Val = FontSchemeValues.Minor };
+                //font1.Append(fontSize1);
+                //font1.Append(color1);
+                //font1.Append(fontName1);
+                //font1.Append(fontFamilyNumbering1);
+                //font1.Append(fontScheme1);
+                //fonts1.Append(font1);
+
+                ////========== 
+                //Fill fill3 = new Fill();
+                //PatternFill patternFill3 = new PatternFill() { PatternType = PatternValues.Solid };
+                //ForegroundColor foregroundColor1 = new ForegroundColor() { Rgb = "FFFF0000" };
+                //BackgroundColor backgroundColor1 = new BackgroundColor() { Indexed = (UInt32Value)64U };
+                //patternFill3.Append(foregroundColor1);
+                //patternFill3.Append(backgroundColor1);
+                //fill3.Append(patternFill3);
+                //stylesheet.Append(fonts1);
+                //workbookStylesPart.Stylesheet = stylesheet;
+
+                //Sheets sheets = _document.WorkbookPart.Workbook.AppendChild<Sheets>(new Sheets());
 
                 return true;
             }
@@ -39,7 +81,6 @@ namespace OXSpreadsheetExample
                 return false;
             }
         }
-
         /// <summary>
         /// 建立工作表
         /// </summary>
@@ -72,56 +113,36 @@ namespace OXSpreadsheetExample
                 return false;
             }
         }
-        /// <summary>
-        /// 匯出資料
-        /// </summary>
-        /// <param name="SheetName"></param>
-        /// <param name="Table"></param>
-        /// <returns></returns>
-        public bool ExportFromDataTable(string SheetName, DataTable Table)
+        public bool CreateColumns(string SheetName, Dictionary<string, double> ColumnsWidth)
         {
-            WorksheetPart _worksheet_part = GetWorksheetPart(SheetName);
-            if (_worksheet_part == null) return false;
-            Worksheet _worksheet = _worksheet_part.Worksheet;
-            SheetData _sheet_data = _worksheet.GetFirstChild<SheetData>();
+            WorksheetPart worksheetpart = GetWorksheetPart(SheetName);
+            if (worksheetpart == null) return false;
 
-            DocumentFormat.OpenXml.Spreadsheet.Row _header_row = new DocumentFormat.OpenXml.Spreadsheet.Row();
-            List<String> _columns = new List<string>();
-            foreach (System.Data.DataColumn column in Table.Columns)
+            // Create custom widths for columns
+            Columns lstColumns = worksheetpart.Worksheet.GetFirstChild<Columns>();
+            bool needToInsertColumns = false;
+            if (lstColumns == null)
             {
-                _columns.Add(column.ColumnName);
-
-                DocumentFormat.OpenXml.Spreadsheet.Cell cell = new DocumentFormat.OpenXml.Spreadsheet.Cell();
-                cell.DataType = new EnumValue<CellValues>(CellValues.String);
-                cell.CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(column.ColumnName);
-                _header_row.AppendChild(cell);
-            }
-            _sheet_data.AppendChild(_header_row);
-
-            foreach (System.Data.DataRow row in Table.Rows)
-            {
-                DocumentFormat.OpenXml.Spreadsheet.Row newRow = new DocumentFormat.OpenXml.Spreadsheet.Row();
-                foreach (String col in _columns)
-                {
-                    DocumentFormat.OpenXml.Spreadsheet.Cell cell = new DocumentFormat.OpenXml.Spreadsheet.Cell();
-                    //cell.DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.String;
-
-                    if (row[col] == DBNull.Value)
-                    {
-                        cell.DataType = CellValues.String;
-                        cell.CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue("");
-                    }
-                    else
-                    {
-                        cell.DataType = CellValues.String;
-                        cell.CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(row[col].ToString());
-                    }
-
-                    newRow.AppendChild(cell);
-                }
-                _sheet_data.AppendChild(newRow);
+                lstColumns = new Columns();
+                needToInsertColumns = true;
             }
 
+            // Min = 1, Max = 1 ==> Apply this to column 1 (A)
+            // Min = 2, Max = 2 ==> Apply this to column 2 (B)
+            // Width = 25 ==> Set the width to 25
+            // CustomWidth = true ==> Tell Excel to use the custom width
+            int colIndex = 1;
+            foreach (KeyValuePair<string, double> keyValue in ColumnsWidth)
+            {
+                lstColumns.Append(new Column() { Min = (uint)colIndex, Max = (uint)colIndex, Width = keyValue.Value, CustomWidth = true });
+                colIndex++;
+            }
+
+            // Only insert the columns if we had to create a new columns element
+            if (needToInsertColumns)
+                worksheetpart.Worksheet.InsertAt(lstColumns, 0);
+
+            worksheetpart.Worksheet.Save();
             return true;
         }
         /// <summary>
@@ -130,11 +151,11 @@ namespace OXSpreadsheetExample
         /// <param name="Filename"></param>
         /// <param name="IsReadOnly"></param>
         /// <returns></returns>
-        public bool Open(string Filename, bool isEditable)
+        public bool Open(string Filename, bool IsReadOnly = true)
         {
             try
             {
-                _document = SpreadsheetDocument.Open(Filename, isEditable);
+                _document = SpreadsheetDocument.Open(Filename, !IsReadOnly);
                 //_document = SpreadsheetDocument.Open(new System.IO.FileStream(Filename, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite), !IsReadOnly);
                 return true;
             }
@@ -238,6 +259,130 @@ namespace OXSpreadsheetExample
                 Cell cell = row.Elements<Cell>().Where(c => c.CellReference.Value == cellReference).First();
                 cell.CellValue = new CellValue(shared_string_index.ToString());
                 cell.DataType = new EnumValue<CellValues>(CellValues.SharedString);
+                cell.StyleIndex = 0;
+                return true;
+            }
+            else
+            {
+                //Cell refCell = null;
+                //foreach (Cell cell in row.Elements<Cell>())
+                //{
+                //    if (cell.CellReference.Value.Length == cellReference.Length)
+                //    {
+                //        if (string.Compare(cell.CellReference.Value, cellReference, true) > 0)
+                //        {
+                //            refCell = cell;
+                //            break;
+                //        }
+                //    }
+                //}
+
+                Cell newCell = new Cell();
+                newCell.CellReference = cellReference;
+                newCell.CellValue = new CellValue(shared_string_index.ToString());
+                newCell.DataType = new EnumValue<CellValues>(CellValues.SharedString);
+                newCell.StyleIndex = 0;
+                //row.InsertBefore(newCell, refCell);
+                row.Append(newCell);
+
+                //worksheet.Save();
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// 儲存格寫入值
+        /// 日期格式
+        /// </summary>
+        /// <param name="SheetName"></param>
+        /// <param name="ColumnName"></param>
+        /// <param name="RowIndex"></param>
+        /// <param name="Text"></param>
+        /// <returns></returns>
+        public bool WriteDate(string SheetName, string ColumnName, int RowIndex, string dateTime)
+        {
+            WorksheetPart worksheetpart = GetWorksheetPart(SheetName);
+            if (worksheetpart == null) return false;
+
+            Worksheet worksheet = worksheetpart.Worksheet;
+            SheetData sheetData = worksheet.GetFirstChild<SheetData>();
+            string cellReference = ColumnName + RowIndex;
+
+            Row row;
+            if (sheetData.Elements<Row>().Where(r => r.RowIndex == RowIndex).Count() != 0)
+                row = sheetData.Elements<Row>().Where(r => r.RowIndex == RowIndex).First();
+            else
+            {
+                row = new Row() { RowIndex = (uint)RowIndex };
+                sheetData.Append(row);
+            }
+            //===============================
+            if (row.Elements<Cell>().Where(c => c.CellReference.Value == ColumnName + RowIndex).Count() > 0)
+            {
+                Cell cell = row.Elements<Cell>().Where(c => c.CellReference.Value == cellReference).First();
+                cell.CellValue = new CellValue(dateTime);
+                cell.DataType = new EnumValue<CellValues>(CellValues.Date);
+                cell.StyleIndex = 0;
+                return true;
+            }
+            else
+            {
+                //Cell refCell = null;
+                //foreach (Cell cell in row.Elements<Cell>())
+                //{
+                //    if (cell.CellReference.Value.Length == cellReference.Length)
+                //    {
+                //        if (string.Compare(cell.CellReference.Value, cellReference, true) > 0)
+                //        {
+                //            refCell = cell;
+                //            break;
+                //        }
+                //    }
+                //}
+
+                Cell newCell = new Cell();
+                newCell.CellReference = cellReference;
+                newCell.CellValue = new CellValue(dateTime);
+                newCell.DataType = new EnumValue<CellValues>(CellValues.Date);
+                newCell.StyleIndex = 0;
+                //row.InsertBefore(newCell, refCell);
+                row.Append(newCell);
+
+                //worksheet.Save();
+                return true;
+            }
+        }
+
+        public bool SetCellStyle(string SheetName, string ColumnName, int RowIndex, CustomizeStyle customizeStyle)
+        {
+            WorksheetPart worksheetpart = GetWorksheetPart(SheetName);
+            if (worksheetpart == null) return false;
+
+            Worksheet worksheet = worksheetpart.Worksheet;
+            SheetData sheetData = worksheet.GetFirstChild<SheetData>();
+            string cellReference = ColumnName + RowIndex;
+
+            Row row;
+            if (sheetData.Elements<Row>().Where(r => r.RowIndex == RowIndex).Count() != 0)
+                row = sheetData.Elements<Row>().Where(r => r.RowIndex == RowIndex).First();
+            else
+            {
+                row = new Row() { RowIndex = (uint)RowIndex };
+                sheetData.Append(row);
+            }
+            //===============================
+            if (row.Elements<Cell>().Where(c => c.CellReference.Value == ColumnName + RowIndex).Count() > 0)
+            {
+                Cell cell = row.Elements<Cell>().Where(c => c.CellReference.Value == cellReference).First();
+                //設定格式
+                if (customizeStyle == CustomizeStyle.藍底黑框)
+                    cell.StyleIndex = (UInt32Value)1U;
+                else if (customizeStyle == CustomizeStyle.白底黑框)
+                    cell.StyleIndex = (UInt32Value)2U;
+                else if (customizeStyle == CustomizeStyle.上下藍框)
+                    cell.StyleIndex = (UInt32Value)3U;
+                else
+                    cell.StyleIndex = (UInt32Value)0U;
                 return true;
             }
             else
@@ -257,11 +402,27 @@ namespace OXSpreadsheetExample
 
                 Cell newCell = new Cell() { CellReference = cellReference };
                 row.InsertBefore(newCell, refCell);
-                worksheet.Save();
-                newCell.CellValue = new CellValue(shared_string_index.ToString());
-                newCell.DataType = new EnumValue<CellValues>(CellValues.SharedString);
+                //worksheet.Save();
+                //設定格式
+                if (customizeStyle == CustomizeStyle.藍底黑框)
+                    newCell.StyleIndex = (UInt32Value)1U;
+                else if (customizeStyle == CustomizeStyle.白底黑框)
+                    newCell.StyleIndex = (UInt32Value)2U;
+                else if (customizeStyle == CustomizeStyle.上下藍框)
+                    newCell.StyleIndex = (UInt32Value)3U;
+                else
+                    newCell.StyleIndex = (UInt32Value)0U;
                 return true;
             }
+        }
+        public bool WorkSheetSave(string SheetName)
+        {
+            WorksheetPart worksheetpart = GetWorksheetPart(SheetName);
+            if (worksheetpart == null) return false;
+
+            Worksheet worksheet = worksheetpart.Worksheet;
+            worksheet.Save();
+            return true;
         }
         private WorksheetPart GetWorksheetPart(string SheetName)
         {
@@ -269,7 +430,51 @@ namespace OXSpreadsheetExample
             string relId = _document.WorkbookPart.Workbook.Descendants<Sheet>().First(s => SheetName.Equals(s.Name)).Id;
             return (WorksheetPart)_document.WorkbookPart.GetPartById(relId);
         }
+        /// <summary>
+        /// 取得 Excel 欄位索引名稱)
+        /// </summary>
+        /// <param name="columnIndex"></param>
+        /// <returns></returns>
+        public string GetExcelColumnName(int columnIndex)
+        {
+            //  例:  (0) should return "A"
+            //       (1) should return "B"
+            //       (25) should return "Z"
+            //       (26) should return "AA"
+            //       (27) should return "AB"
+            //       ..etc..
+            char firstChar;
+            char secondChar;
+            char thirdChar;
 
+            if (columnIndex < 26)
+            {
+                return ((char)('A' + columnIndex)).ToString();
+            }
+
+            if (columnIndex < 702)
+            {
+                firstChar = (char)('A' + (columnIndex / 26) - 1);
+                secondChar = (char)('A' + (columnIndex % 26));
+
+                return string.Format("{0}{1}", firstChar, secondChar);
+            }
+
+            int firstInt = columnIndex / 26 / 26;
+            int secondInt = (columnIndex - firstInt * 26 * 26) / 26;
+            if (secondInt == 0)
+            {
+                secondInt = 26;
+                firstInt = firstInt - 1;
+            }
+            int thirdInt = (columnIndex - firstInt * 26 * 26 - secondInt * 26);
+
+            firstChar = (char)('A' + firstInt - 1);
+            secondChar = (char)('A' + secondInt - 1);
+            thirdChar = (char)('A' + thirdInt);
+
+            return string.Format("{0}{1}{2}", firstChar, secondChar, thirdChar);
+        }
         private int InsertSharedStringItem(string Text)
         {
             SharedStringTablePart shareStringPart;
@@ -383,6 +588,78 @@ namespace OXSpreadsheetExample
 
             worksheet.Save();
             return retRow;
+        }
+        /// <summary>
+        /// Given a cell name, parses the specified cell to get the row index.
+        /// </summary>
+        /// <param name="cellReference">Address of the cell (ie. B2)</param>
+        /// <returns>Row Index (ie. 2)</returns>
+        public static uint GetRowIndex(string cellReference)
+        {
+            // Create a regular expression to match the row index portion the cell name.
+            Regex regex = new Regex(@"\d+");
+            Match match = regex.Match(cellReference);
+
+            return uint.Parse(match.Value);
+        }
+
+        /// <summary>
+        /// Increments the reference of a given cell.  This reference comes from the CellReference property
+        /// on a Cell.
+        /// </summary>
+        /// <param name="reference">reference string</param>
+        /// <param name="cellRefPart">indicates what is to be incremented</param>
+        /// <returns></returns>
+        public static string IncrementCellReference(string reference, CellReferencePartEnum cellRefPart)
+        {
+            string newReference = reference;
+
+            if (cellRefPart != CellReferencePartEnum.None && !String.IsNullOrEmpty(reference))
+            {
+                string[] parts = Regex.Split(reference, "([A-Z]+)");
+
+                if (cellRefPart == CellReferencePartEnum.Column || cellRefPart == CellReferencePartEnum.Both)
+                {
+                    List<char> col = parts[1].ToCharArray().ToList();
+                    bool needsIncrement = true;
+                    int index = col.Count - 1;
+
+                    do
+                    {
+                        // increment the last letter
+                        col[index] = Letters[Letters.IndexOf(col[index]) + 1];
+
+                        // if it is the last letter, then we need to roll it over to 'A'
+                        if (col[index] == Letters[Letters.Count - 1])
+                        {
+                            col[index] = Letters[0];
+                        }
+                        else
+                        {
+                            needsIncrement = false;
+                        }
+
+                    } while (needsIncrement && --index >= 0);
+
+                    // If true, then we need to add another letter to the mix. Initial value was something like "ZZ"
+                    if (needsIncrement)
+                    {
+                        col.Add(Letters[0]);
+                    }
+
+                    parts[1] = new String(col.ToArray());
+                }
+
+                if (cellRefPart == CellReferencePartEnum.Row || cellRefPart == CellReferencePartEnum.Both)
+                {
+                    // Increment the row number. A reference is invalid without this componenet, so we assume it will always be present.
+                    parts[2] = (int.Parse(parts[2]) + 1).ToString();
+                }
+
+                newReference = parts[1] + parts[2];
+            }
+
+            return newReference;
         }
         /// <summary>
         /// Updates all of the Row indexes and the child Cells' CellReferences whenever
@@ -533,78 +810,6 @@ namespace OXSpreadsheetExample
         }
 
         /// <summary>
-        /// Given a cell name, parses the specified cell to get the row index.
-        /// </summary>
-        /// <param name="cellReference">Address of the cell (ie. B2)</param>
-        /// <returns>Row Index (ie. 2)</returns>
-        public static uint GetRowIndex(string cellReference)
-        {
-            // Create a regular expression to match the row index portion the cell name.
-            Regex regex = new Regex(@"\d+");
-            Match match = regex.Match(cellReference);
-
-            return uint.Parse(match.Value);
-        }
-
-        /// <summary>
-        /// Increments the reference of a given cell.  This reference comes from the CellReference property
-        /// on a Cell.
-        /// </summary>
-        /// <param name="reference">reference string</param>
-        /// <param name="cellRefPart">indicates what is to be incremented</param>
-        /// <returns></returns>
-        public static string IncrementCellReference(string reference, CellReferencePartEnum cellRefPart)
-        {
-            string newReference = reference;
-
-            if (cellRefPart != CellReferencePartEnum.None && !String.IsNullOrEmpty(reference))
-            {
-                string[] parts = Regex.Split(reference, "([A-Z]+)");
-
-                if (cellRefPart == CellReferencePartEnum.Column || cellRefPart == CellReferencePartEnum.Both)
-                {
-                    List<char> col = parts[1].ToCharArray().ToList();
-                    bool needsIncrement = true;
-                    int index = col.Count - 1;
-
-                    do
-                    {
-                        // increment the last letter
-                        col[index] = Letters[Letters.IndexOf(col[index]) + 1];
-
-                        // if it is the last letter, then we need to roll it over to 'A'
-                        if (col[index] == Letters[Letters.Count - 1])
-                        {
-                            col[index] = Letters[0];
-                        }
-                        else
-                        {
-                            needsIncrement = false;
-                        }
-
-                    } while (needsIncrement && --index >= 0);
-
-                    // If true, then we need to add another letter to the mix. Initial value was something like "ZZ"
-                    if (needsIncrement)
-                    {
-                        col.Add(Letters[0]);
-                    }
-
-                    parts[1] = new String(col.ToArray());
-                }
-
-                if (cellRefPart == CellReferencePartEnum.Row || cellRefPart == CellReferencePartEnum.Both)
-                {
-                    // Increment the row number. A reference is invalid without this componenet, so we assume it will always be present.
-                    parts[2] = (int.Parse(parts[2]) + 1).ToString();
-                }
-
-                newReference = parts[1] + parts[2];
-            }
-
-            return newReference;
-        }
-        /// <summary>
         /// Given a cell name, parses the specified cell to get the column name.
         /// </summary>
         /// <param name="cellReference">Address of the cell (ie. B2)</param>
@@ -617,14 +822,398 @@ namespace OXSpreadsheetExample
 
             return match.Value;
         }
-        public enum CellReferencePartEnum
-        {
-            None,
-            Column,
-            Row,
-            Both
-        }
-        private static List<char> Letters = new List<char>() { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ' };
 
+        private static List<char> Letters = new List<char>() { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ' };
+        /// <summary>
+        /// 建立預設格式
+        /// </summary>
+        /// <returns></returns>
+        private static Stylesheet CreateStylesheet()
+        {
+            Stylesheet stylesheet1 = new Stylesheet() { MCAttributes = new MarkupCompatibilityAttributes() { Ignorable = "x14ac" } };
+            stylesheet1.AddNamespaceDeclaration("mc", "http://schemas.openxmlformats.org/markup-compatibility/2006");
+            stylesheet1.AddNamespaceDeclaration("x14ac", "http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac");
+
+            Fonts fonts1 = new Fonts() { Count = (UInt32Value)1U, KnownFonts = true };
+
+            Font font1 = new Font();
+            FontSize fontSize1 = new FontSize() { Val = 12D };//字型大小
+            Color color1 = new Color() { Theme = (UInt32Value)1U };
+            FontName fontName1 = new FontName() { Val = "微軟正黑體" };//字型
+            FontFamilyNumbering fontFamilyNumbering1 = new FontFamilyNumbering() { Val = 2 };
+            FontScheme fontScheme1 = new FontScheme() { Val = FontSchemeValues.None }; //字型方案
+
+            font1.Append(fontSize1);
+            font1.Append(color1);
+            font1.Append(fontName1);
+            font1.Append(fontFamilyNumbering1);
+            font1.Append(fontScheme1);
+
+            fonts1.Append(font1);
+
+            Fills fills1 = new Fills() { Count = (UInt32Value)5U };
+
+            // FillId = 0
+            Fill fill1 = new Fill();
+            PatternFill patternFill1 = new PatternFill() { PatternType = PatternValues.None };
+            fill1.Append(patternFill1);
+
+            // FillId = 1
+            Fill fill2 = new Fill();
+            PatternFill patternFill2 = new PatternFill() { PatternType = PatternValues.Gray125 };
+            fill2.Append(patternFill2);
+
+            // FillId = 2,藍色 DCE6F1
+            Fill fill3 = new Fill();
+            PatternFill patternFill3 = new PatternFill() { PatternType = PatternValues.Solid };
+            ForegroundColor foregroundColor1 = new ForegroundColor() { Rgb = new HexBinaryValue("DCE6F1") };
+            BackgroundColor backgroundColor1 = new BackgroundColor() { Indexed = (UInt32Value)64U };
+            patternFill3.Append(foregroundColor1);
+            patternFill3.Append(backgroundColor1);
+            fill3.Append(patternFill3);
+
+            // FillId = 3,BLUE
+            Fill fill4 = new Fill();
+            PatternFill patternFill4 = new PatternFill() { PatternType = PatternValues.Solid };
+            ForegroundColor foregroundColor2 = new ForegroundColor() { Rgb = "FF0070C0" };
+            BackgroundColor backgroundColor2 = new BackgroundColor() { Indexed = (UInt32Value)64U };
+            patternFill4.Append(foregroundColor2);
+            patternFill4.Append(backgroundColor2);
+            fill4.Append(patternFill4);
+
+            // FillId = 4,YELLO
+            Fill fill5 = new Fill();
+            PatternFill patternFill5 = new PatternFill() { PatternType = PatternValues.Solid };
+            ForegroundColor foregroundColor3 = new ForegroundColor() { Rgb = "FFFFFF00" };
+            BackgroundColor backgroundColor3 = new BackgroundColor() { Indexed = (UInt32Value)64U };
+            patternFill5.Append(foregroundColor3);
+            patternFill5.Append(backgroundColor3);
+            fill5.Append(patternFill5);
+
+            fills1.Append(fill1);
+            fills1.Append(fill2);
+            fills1.Append(fill3);
+            fills1.Append(fill4);
+            fills1.Append(fill5);
+
+            Borders borders1 = new Borders() { Count = (UInt32Value)3U };
+
+            //Border = 0,無框線
+            Border border1 = new Border();
+            LeftBorder leftBorder1 = new LeftBorder();
+            RightBorder rightBorder1 = new RightBorder();
+            TopBorder topBorder1 = new TopBorder();
+            BottomBorder bottomBorder1 = new BottomBorder();
+            DiagonalBorder diagonalBorder1 = new DiagonalBorder();
+
+            border1.Append(leftBorder1);
+            border1.Append(rightBorder1);
+            border1.Append(topBorder1);
+            border1.Append(bottomBorder1);
+            border1.Append(diagonalBorder1);
+
+            borders1.Append(border1);
+
+            //Border = 1,上下左右實線 黑色
+            Border border2 = new Border();
+            LeftBorder leftBorder2 = new LeftBorder() { Style = BorderStyleValues.Thin };//實線
+            Color leftBorder2Color = new Color() { Indexed = (UInt32Value)64U };
+            leftBorder2.Append(leftBorder2Color);
+            RightBorder rightBorder2 = new RightBorder() { Style = BorderStyleValues.Thin };//實線
+            Color rightBorder2Color = new Color() { Indexed = (UInt32Value)64U };
+            rightBorder2.Append(rightBorder2Color);
+            TopBorder topBorder2 = new TopBorder() { Style = BorderStyleValues.Thin };//實線
+            Color topBorder2Color = new Color() { Indexed = (UInt32Value)64U };
+            topBorder2.Append(topBorder2Color);
+            BottomBorder bottomBorder2 = new BottomBorder() { Style = BorderStyleValues.Thin };//實線
+            Color bottomBorder2Color = new Color() { Indexed = (UInt32Value)64U };
+            bottomBorder2.Append(bottomBorder2Color);
+            DiagonalBorder diagonalBorder2 = new DiagonalBorder();
+
+            border2.Append(leftBorder2);
+            border2.Append(rightBorder2);
+            border2.Append(topBorder2);
+            border2.Append(bottomBorder2);
+            border2.Append(diagonalBorder2);
+
+            borders1.Append(border2);
+
+            //Border = 2,上實線 下雙實線 藍色 #4F81BD
+            Border border3 = new Border();
+            LeftBorder leftBorder3 = new LeftBorder();
+            RightBorder rightBorder3 = new RightBorder();
+            TopBorder topBorder3 = new TopBorder() { Style = BorderStyleValues.Thin };//實線
+            Color topBorder3Color = new Color() { Rgb = new HexBinaryValue("4F81BD") };
+            topBorder3.Append(topBorder3Color);
+            BottomBorder bottomBorder3 = new BottomBorder() { Style = BorderStyleValues.Double };//雙實線
+            Color bottomBorder3Color = new Color() { Rgb = new HexBinaryValue("4F81BD") };
+            bottomBorder3.Append(bottomBorder3Color);
+            DiagonalBorder diagonalBorder3 = new DiagonalBorder();
+
+            border3.Append(leftBorder3);
+            border3.Append(rightBorder3);
+            border3.Append(topBorder3);
+            border3.Append(bottomBorder3);
+            border3.Append(diagonalBorder3);
+
+            borders1.Append(border3);
+
+            CellStyleFormats cellStyleFormats1 = new CellStyleFormats() { Count = (UInt32Value)1U };
+            CellFormat cellFormat1 = new CellFormat() { NumberFormatId = (UInt32Value)0U, FontId = (UInt32Value)0U, FillId = (UInt32Value)0U, BorderId = (UInt32Value)0U };
+
+            cellStyleFormats1.Append(cellFormat1);
+
+            CellFormats cellFormats1 = new CellFormats() { Count = (UInt32Value)4U };
+            CellFormat cellFormat2 = new CellFormat() { NumberFormatId = (UInt32Value)0U, FontId = (UInt32Value)0U, FillId = (UInt32Value)0U, BorderId = (UInt32Value)0U, FormatId = (UInt32Value)0U };
+            CellFormat cellFormat3 = new CellFormat() { NumberFormatId = (UInt32Value)0U, FontId = (UInt32Value)0U, FillId = (UInt32Value)2U, BorderId = (UInt32Value)1U, FormatId = (UInt32Value)0U, ApplyFill = true };
+            CellFormat cellFormat4 = new CellFormat() { NumberFormatId = (UInt32Value)14U, FontId = (UInt32Value)0U, FillId = (UInt32Value)0U, BorderId = (UInt32Value)1U, FormatId = (UInt32Value)0U, ApplyFill = true, ApplyNumberFormat = true };
+            CellFormat cellFormat5 = new CellFormat() { NumberFormatId = (UInt32Value)0U, FontId = (UInt32Value)0U, FillId = (UInt32Value)0U, BorderId = (UInt32Value)2U, FormatId = (UInt32Value)0U, ApplyFill = true };
+
+            cellFormats1.Append(cellFormat2);
+            cellFormats1.Append(cellFormat3);
+            cellFormats1.Append(cellFormat4);
+            cellFormats1.Append(cellFormat5);
+
+            CellStyles cellStyles1 = new CellStyles() { Count = (UInt32Value)1U };
+            CellStyle cellStyle1 = new CellStyle() { Name = "Normal", FormatId = (UInt32Value)0U, BuiltinId = (UInt32Value)0U };
+
+            cellStyles1.Append(cellStyle1);
+            DifferentialFormats differentialFormats1 = new DifferentialFormats() { Count = (UInt32Value)0U };
+            TableStyles tableStyles1 = new TableStyles() { Count = (UInt32Value)0U, DefaultTableStyle = "TableStyleMedium2", DefaultPivotStyle = "PivotStyleMedium9" };
+
+            stylesheet1.Append(fonts1);
+            stylesheet1.Append(fills1);
+            stylesheet1.Append(borders1);
+            stylesheet1.Append(cellStyleFormats1);
+            stylesheet1.Append(cellFormats1);
+            stylesheet1.Append(cellStyles1);
+            stylesheet1.Append(differentialFormats1);
+            stylesheet1.Append(tableStyles1);
+            return stylesheet1;
+        }
+        /// <summary>
+        /// 日期測試
+        /// </summary>
+        /// <param name="filename"></param>
+        public void Datetest(string filename)
+        {
+            using (SpreadsheetDocument document = SpreadsheetDocument.Create(filename, SpreadsheetDocumentType.Workbook))
+            {
+                //fluff to generate the workbook etc
+                WorkbookPart workbookPart = document.AddWorkbookPart();
+                workbookPart.Workbook = new Workbook();
+
+                var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
+                worksheetPart.Worksheet = new Worksheet();
+
+                Sheets sheets = workbookPart.Workbook.AppendChild(new Sheets());
+
+                Sheet sheet = new Sheet() { Id = workbookPart.GetIdOfPart(worksheetPart), SheetId = 1, Name = "Sheet" };
+                sheets.Append(sheet);
+
+                workbookPart.Workbook.Save();
+
+                var sheetData = worksheetPart.Worksheet.AppendChild(new SheetData());
+
+                //add the style
+                Stylesheet styleSheet = new Stylesheet();
+
+                CellFormat cf = new CellFormat();
+                //數字格式
+                cf.NumberFormatId = 14;
+                //數字格式啟用
+                cf.ApplyNumberFormat = true;
+
+                CellFormats cfs = new CellFormats();
+                cfs.Append(cf);
+                styleSheet.CellFormats = cfs;
+
+                styleSheet.Borders = new Borders();
+                styleSheet.Borders.Append(new Border());
+                styleSheet.Fills = new Fills();
+                styleSheet.Fills.Append(new Fill());
+                styleSheet.Fonts = new Fonts();
+                styleSheet.Fonts.Append(new Font());
+
+                workbookPart.AddNewPart<WorkbookStylesPart>();
+                workbookPart.WorkbookStylesPart.Stylesheet = styleSheet;
+
+                CellStyles css = new CellStyles();
+                CellStyle cs = new CellStyle();
+                cs.FormatId = 0;
+                cs.BuiltinId = 0;
+                css.Append(cs);
+                css.Count = UInt32Value.FromUInt32((uint)css.ChildElements.Count);
+                styleSheet.Append(css);
+
+                // Create custom widths for columns
+                Columns lstColumns = worksheetPart.Worksheet.GetFirstChild<Columns>();
+                Boolean needToInsertColumns = false;
+                if (lstColumns == null)
+                {
+                    lstColumns = new Columns();
+                    needToInsertColumns = true;
+                }
+                // Min = 1, Max = 1 ==> Apply this to column 1 (A)
+                // Min = 2, Max = 2 ==> Apply this to column 2 (B)
+                // Width = 25 ==> Set the width to 25
+                // CustomWidth = true ==> Tell Excel to use the custom width
+                lstColumns.Append(new Column() { Min = 1, Max = 1, Width = 6.38, CustomWidth = true });
+                lstColumns.Append(new Column() { Min = 2, Max = 2, Width = 6.38, CustomWidth = true });
+                lstColumns.Append(new Column() { Min = 3, Max = 3, Width = 6.38, CustomWidth = true });
+                //lstColumns.Append(new Column() { Min = 4, Max = 4, Width = 8.38, CustomWidth = true });
+                //lstColumns.Append(new Column() { Min = 5, Max = 5, Width = 13, CustomWidth = true });
+                //lstColumns.Append(new Column() { Min = 6, Max = 6, Width = 17, CustomWidth = true });
+                //lstColumns.Append(new Column() { Min = 7, Max = 7, Width = 12, CustomWidth = true });
+                // Only insert the columns if we had to create a new columns element
+                if (needToInsertColumns)
+                    worksheetPart.Worksheet.InsertAt(lstColumns, 0);
+
+                Row row = new Row();
+
+                DateTime date = new DateTime(2017, 6, 24);
+
+                /*** Date code here ***/
+                //write an OADate with type of Number
+                Cell cell1 = new Cell();
+                cell1.CellReference = "A1";
+                cell1.CellValue = new CellValue(date.ToOADate().ToString());
+                cell1.DataType = new EnumValue<CellValues>(CellValues.Number);
+                cell1.StyleIndex = 0;
+                row.Append(cell1);
+
+                //write an OADate with no type (defaults to Number)
+                Cell cell2 = new Cell();
+                cell2.CellReference = "B1";
+                cell2.CellValue = new CellValue(date.ToOADate().ToString());
+                cell1.StyleIndex = 0;
+                row.Append(cell2);
+
+                //write an ISO 8601 date with type of Date
+                Cell cell3 = new Cell();
+                cell3.CellReference = "C1";
+                cell3.CellValue = new CellValue(date.ToString("yyyy-MM-dd"));
+                cell3.DataType = new EnumValue<CellValues>(CellValues.Date);
+                cell1.StyleIndex = 0;
+                row.Append(cell3);
+
+                sheetData.AppendChild(row);
+
+                worksheetPart.Worksheet.Save();
+            }
+        }
+        /// <summary>
+        /// 有錯誤，順序問題
+        /// </summary>
+        /// <param name="SheetName"></param>
+        public void AutoSize(string SheetName)
+        {
+            WorksheetPart worksheetpart = GetWorksheetPart(SheetName);
+            if (worksheetpart == null) return;
+
+            Worksheet worksheet = worksheetpart.Worksheet;
+            SheetData sheetData = worksheet.GetFirstChild<SheetData>();
+
+            var maxColWidth = GetMaxCharacterWidth(sheetData);
+
+            Columns lstColumns = worksheet.GetFirstChild<Columns>();
+
+            int colIndex = 0;
+            foreach (Column col in lstColumns)
+            {
+                col.Width = maxColWidth[colIndex++];
+            }
+
+            worksheet.Save();
+        }
+        private Dictionary<int, double> GetMaxCharacterWidth(SheetData sheetData)
+        {
+            //iterate over all cells getting a max char value for each column
+            Dictionary<int, double> maxColWidth = new Dictionary<int, double>();
+            var rows = sheetData.Elements<Row>();
+            UInt32[] numberStyles = new UInt32[] { 5, 6, 7, 8 }; //styles that will add extra chars
+            UInt32[] boldStyles = new UInt32[] { 1, 2, 3, 4, 6, 7, 8 }; //styles that will bold
+            foreach (var r in rows)
+            {
+                var cells = r.Elements<Cell>().ToArray();
+
+                //using cell index as my column
+                for (int i = 0; i < cells.Length; i++)
+                {
+                    var cell = cells[i];
+                    var cellValue = cell.CellValue == null ? string.Empty : cell.CellValue.InnerText;
+                    var cellTextLength = 8.38;
+
+                    if (cell.DataType == null || cell.DataType.Value == CellValues.Date)
+                    {
+                        cellTextLength = 8.88;
+                    }
+                    else if (cell.DataType != null && cell.DataType.Value == CellValues.SharedString)
+                    {
+                        SharedStringTablePart sharedStringTablePart = _document.WorkbookPart.SharedStringTablePart;
+                        string str = sharedStringTablePart.SharedStringTable.ChildElements[int.Parse(cellValue)].InnerText;
+                        cellTextLength = GetWidth(new System.Drawing.Font("微軟正黑體", 12), str);
+                    }
+                    else
+                    {
+                        cellTextLength = 8.38;
+                    }
+                    //if (cell.StyleIndex != null && numberStyles.Contains(cell.StyleIndex))
+                    //{
+                    //    int thousandCount = (int)Math.Truncate((double)cellTextLength / 4);
+
+                    //    //add 3 for '.00' 
+                    //    cellTextLength += (3 + thousandCount);
+                    //}
+
+                    //if (cell.StyleIndex != null && boldStyles.Contains(cell.StyleIndex))
+                    //{
+                    //    //add an extra char for bold - not 100% acurate but good enough for what i need.
+                    //    cellTextLength += 1;
+                    //}
+
+                    if (maxColWidth.ContainsKey(i))
+                    {
+                        var current = maxColWidth[i];
+                        if (cellTextLength > current)
+                        {
+                            maxColWidth[i] = cellTextLength;
+                        }
+                    }
+                    else
+                    {
+                        maxColWidth.Add(i, cellTextLength);
+                    }
+                }
+            }
+
+            return maxColWidth;
+        }
+        private static double GetWidth(System.Drawing.Font stringFont, string text)
+        {
+            // This formula calculates width. For better desired outputs try to change 0.5M to something else
+
+            System.Drawing.Size textSize = System.Windows.Forms.TextRenderer.MeasureText(text, stringFont);
+            double width = (double)(((textSize.Width / (double)7) * 256) - (128 / 7)) / 256;
+            width = (double)decimal.Round((decimal)width + 0.5M, 2);
+
+            return width;
+        }
+    }
+    public enum CellReferencePartEnum
+    {
+        None,
+        Column,
+        Row,
+        Both
+    }
+    /// <summary>
+    /// 自訂格式
+    /// </summary>
+    public enum CustomizeStyle
+    {
+        藍底黑框 = 1,
+        白底黑框 = 2,
+        上下藍框 = 3
     }
 }
