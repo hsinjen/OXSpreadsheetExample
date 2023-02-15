@@ -1199,6 +1199,322 @@ namespace OXSpreadsheetExample
 
             return width;
         }
+        /// <summary>
+        /// 加入圖片
+        /// </summary>
+        /// <param name="SheetName"></param>
+        /// <param name="imageStream"></param>
+        /// <param name="imgDesc"></param>
+        /// <param name="colNumber"></param>
+        /// <param name="rowNumber"></param>
+        /// <param name="imageWidth">圖片寬度(公分)</param>
+        /// <param name="imageHeight">圖片高度(公分)</param>
+        /// <param name="imageColOffset">圖片列偏移(公分)</param>
+        /// <param name="imageRowOffset">圖片行偏移(公分)</param>
+        public void AddImage(string SheetName,
+                             Stream imageStream, string imgDesc,
+                             int colNumber, int rowNumber,
+                             double imageWidth, double imageHeight,
+                             double imageColOffset, double imageRowOffset)
+        {
+            WorksheetPart worksheetPart = GetWorksheetPart(SheetName);
+            if (worksheetPart == null) return;
+
+            // We need the image stream more than once, thus we create a memory copy
+            MemoryStream imageMemStream = new MemoryStream();
+            imageStream.Position = 0;
+            imageStream.CopyTo(imageMemStream);
+            imageStream.Position = 0;
+
+            var drawingsPart = worksheetPart.DrawingsPart;
+            if (drawingsPart == null)
+                drawingsPart = worksheetPart.AddNewPart<DrawingsPart>();
+
+            if (!worksheetPart.Worksheet.ChildElements.OfType<Drawing>().Any())
+            {
+                worksheetPart.Worksheet.Append(new Drawing { Id = worksheetPart.GetIdOfPart(drawingsPart) });
+            }
+
+            if (drawingsPart.WorksheetDrawing == null)
+            {
+                drawingsPart.WorksheetDrawing = new Xdr.WorksheetDrawing();
+            }
+
+            var worksheetDrawing = drawingsPart.WorksheetDrawing;
+
+            System.Drawing.Bitmap bm = new System.Drawing.Bitmap(imageMemStream);
+            var imagePart = drawingsPart.AddImagePart(GetImagePartTypeByBitmap(bm));
+            imagePart.FeedData(imageStream);
+
+            //設定圖片高度、寬度
+            A.Extents extents = new A.Extents();
+            //var extentsCx = bm.Width * (long)(914400 / bm.HorizontalResolution);
+            //var extentsCy = bm.Height * (long)(914400 / bm.VerticalResolution);
+            //公分轉英吋 1 cm = 0.393701 inch
+            //英吋 * 914400 單位emu
+            var extentsCx = (long)(imageWidth * 0.393701 * 914400);
+            var extentsCy = (long)(imageHeight * 0.393701 * 914400);
+            bm.Dispose();
+
+            var colOffset = (long)(imageColOffset * 0.393701 * 914400);
+            var rowOffset = (long)(imageRowOffset * 0.393701 * 914400);
+
+            var nvps = worksheetDrawing.Descendants<Xdr.NonVisualDrawingProperties>();
+            var nvpId = nvps.Count() > 0
+                ? (UInt32Value)worksheetDrawing.Descendants<Xdr.NonVisualDrawingProperties>().Max(p => p.Id.Value) + 1
+                : 1U;
+
+            var oneCellAnchor = new Xdr.OneCellAnchor(
+                new Xdr.FromMarker
+                {
+                    ColumnId = new Xdr.ColumnId((colNumber - 1).ToString()),
+                    RowId = new Xdr.RowId((rowNumber - 1).ToString()),
+                    ColumnOffset = new Xdr.ColumnOffset(colOffset.ToString()),
+                    RowOffset = new Xdr.RowOffset(rowOffset.ToString())
+                },
+                new Xdr.Extent { Cx = extentsCx, Cy = extentsCy },
+                new Xdr.Picture(
+                    new Xdr.NonVisualPictureProperties(
+                        new Xdr.NonVisualDrawingProperties { Id = nvpId, Name = "Picture " + nvpId, Description = imgDesc },
+                        new Xdr.NonVisualPictureDrawingProperties(new A.PictureLocks { NoChangeAspect = false })
+                    ),
+                    new Xdr.BlipFill(
+                        new A.Blip { Embed = drawingsPart.GetIdOfPart(imagePart), CompressionState = A.BlipCompressionValues.Print },
+                        new A.Stretch(new A.FillRectangle())
+                    ),
+                    new Xdr.ShapeProperties(
+                        new A.Transform2D(
+                            new A.Offset { X = 0, Y = 0 },
+                            new A.Extents { Cx = extentsCx, Cy = extentsCy }
+                        ),
+                        new A.PresetGeometry { Preset = A.ShapeTypeValues.Rectangle }
+                    )
+                ),
+                new Xdr.ClientData()
+            );
+
+            worksheetDrawing.Append(oneCellAnchor);
+        }
+        public static ImagePartType GetImagePartTypeByBitmap(System.Drawing.Bitmap image)
+        {
+            if (ImageFormat.Bmp.Equals(image.RawFormat))
+                return ImagePartType.Bmp;
+            else if (ImageFormat.Gif.Equals(image.RawFormat))
+                return ImagePartType.Gif;
+            else if (ImageFormat.Png.Equals(image.RawFormat))
+                return ImagePartType.Png;
+            else if (ImageFormat.Tiff.Equals(image.RawFormat))
+                return ImagePartType.Tiff;
+            else if (ImageFormat.Icon.Equals(image.RawFormat))
+                return ImagePartType.Icon;
+            else if (ImageFormat.Jpeg.Equals(image.RawFormat))
+                return ImagePartType.Jpeg;
+            else if (ImageFormat.Emf.Equals(image.RawFormat))
+                return ImagePartType.Emf;
+            else if (ImageFormat.Wmf.Equals(image.RawFormat))
+                return ImagePartType.Wmf;
+            else
+                throw new Exception("Image type could not be determined.");
+        }
+        private static Stylesheet CreateStylesheet2()
+        {
+            Stylesheet ss = new Stylesheet();
+
+            Fonts fts = new Fonts();
+
+            //字型 Font 0
+            DocumentFormat.OpenXml.Spreadsheet.Font ft = new DocumentFormat.OpenXml.Spreadsheet.Font();
+            FontName ftn = new FontName();
+            ftn.Val = StringValue.FromString("微軟正黑體");
+            FontSize ftsz = new FontSize();
+            ftsz.Val = DoubleValue.FromDouble(12);
+            FontScheme ftsh = new FontScheme();
+            ftsh.Val = FontSchemeValues.None;
+            ft.FontName = ftn;
+            ft.FontSize = ftsz;
+            ft.FontScheme = ftsh;
+            fts.Append(ft);
+
+            //Fonts Count
+            fts.Count = UInt32Value.FromUInt32((uint)fts.ChildElements.Count);
+
+            Fills fills = new Fills();
+            //填滿 Fill 0
+            Fill fill;
+            PatternFill patternFill;
+            fill = new Fill();
+            patternFill = new PatternFill();
+            patternFill.PatternType = PatternValues.None;
+            fill.PatternFill = patternFill;
+            fills.Append(fill);
+
+            //填滿 Fill 1
+            fill = new Fill();
+            patternFill = new PatternFill();
+            patternFill.PatternType = PatternValues.Gray125;
+            fill.PatternFill = patternFill;
+            fills.Append(fill);
+
+            //填滿 Fill 2 自訂藍色
+            fill = new Fill();
+            patternFill = new PatternFill();
+            patternFill.PatternType = PatternValues.Solid;
+            patternFill.ForegroundColor = new ForegroundColor();
+            patternFill.ForegroundColor.Rgb = HexBinaryValue.FromString("DCE6F1");
+            patternFill.BackgroundColor = new BackgroundColor();
+            patternFill.BackgroundColor.Rgb = patternFill.ForegroundColor.Rgb;
+            fill.PatternFill = patternFill;
+            fills.Append(fill);
+
+            fills.Count = UInt32Value.FromUInt32((uint)fills.ChildElements.Count);
+
+            Borders borders = new Borders();
+            //框線 Border 0
+            Border border = new Border();
+            border.LeftBorder = new LeftBorder();
+            border.RightBorder = new RightBorder();
+            border.TopBorder = new TopBorder();
+            border.BottomBorder = new BottomBorder();
+            border.DiagonalBorder = new DiagonalBorder();
+            borders.Append(border);
+
+            //框線 Border 1 上下左右實線 黑色
+            border = new Border();
+            border.LeftBorder = new LeftBorder();
+            border.LeftBorder.Style = BorderStyleValues.Thin;
+            border.RightBorder = new RightBorder();
+            border.RightBorder.Style = BorderStyleValues.Thin;
+            border.TopBorder = new TopBorder();
+            border.TopBorder.Style = BorderStyleValues.Thin;
+            border.BottomBorder = new BottomBorder();
+            border.BottomBorder.Style = BorderStyleValues.Thin;
+            border.DiagonalBorder = new DiagonalBorder();
+            borders.Append(border);
+            borders.Count = UInt32Value.FromUInt32((uint)borders.ChildElements.Count);
+
+            CellStyleFormats csfs = new CellStyleFormats();
+            CellFormat cf = new CellFormat();
+            cf.NumberFormatId = 0;
+            cf.FontId = 0;
+            cf.FillId = 0;
+            cf.BorderId = 0;
+            csfs.Append(cf);
+            csfs.Count = UInt32Value.FromUInt32((uint)csfs.ChildElements.Count);
+
+            NumberingFormats nfs = new NumberingFormats();
+            CellFormats cfs = new CellFormats();
+            // index 0
+            cf = new CellFormat();
+            cf.NumberFormatId = 0;
+            cf.FontId = 0;
+            cf.FillId = 0;
+            cf.BorderId = 0;
+            cf.FormatId = 0;
+            cfs.Append(cf);
+
+            //日期
+            NumberingFormat nfDateTime = new NumberingFormat();
+            nfDateTime.NumberFormatId = UInt32Value.FromUInt32(14);
+            nfDateTime.FormatCode = StringValue.FromString("yyyy/mm/dd");
+            nfs.Append(nfDateTime);
+
+            //數字 小數點4位
+            NumberingFormat nf4decimal = new NumberingFormat();
+            nf4decimal.NumberFormatId = UInt32Value.FromUInt32(4);
+            nf4decimal.FormatCode = StringValue.FromString("#,##0.0000");
+            nfs.Append(nf4decimal);
+
+            //數字 小數點2位 #,##0.00 is also Excel style index 4
+            NumberingFormat nf2decimal = new NumberingFormat();
+            nf2decimal.NumberFormatId = UInt32Value.FromUInt32(4);
+            nf2decimal.FormatCode = StringValue.FromString("#,##0.00");
+            nfs.Append(nf2decimal);
+
+            //通用格式 @ is also Excel style index 49
+            NumberingFormat nfForcedText = new NumberingFormat();
+            nfForcedText.NumberFormatId = UInt32Value.FromUInt32(49);
+            nfForcedText.FormatCode = StringValue.FromString("@");
+            nfs.Append(nfForcedText);
+
+            Alignment alignment1 = new Alignment();
+            alignment1.Horizontal = HorizontalAlignmentValues.Center;//水平置中
+            alignment1.Vertical = VerticalAlignmentValues.Center;//垂直置中
+
+            Alignment alignment2 = new Alignment();
+            alignment2.Horizontal = HorizontalAlignmentValues.Center;//水平置中
+            alignment2.Vertical = VerticalAlignmentValues.Center;//垂直置中
+
+            Alignment alignment3 = new Alignment();
+            alignment3.Horizontal = HorizontalAlignmentValues.Center;//水平置中
+            alignment3.Vertical = VerticalAlignmentValues.Center;//垂直置中
+
+            // index 1 文字 藍色底黑框 
+            cf = new CellFormat();
+            cf.Alignment = alignment1;
+            cf.NumberFormatId = nfForcedText.NumberFormatId;
+            cf.FontId = 0;
+            cf.FillId = 2;
+            cf.BorderId = 1;
+            cf.FormatId = 0;
+            cf.ApplyFill = BooleanValue.FromBoolean(true);
+            cf.ApplyNumberFormat = BooleanValue.FromBoolean(true);
+            cfs.Append(cf);
+
+            // index 2 文字 白色底黑框
+            cf = new CellFormat();
+            cf.Alignment = alignment2;
+            cf.NumberFormatId = nfForcedText.NumberFormatId;
+            cf.FontId = 0;
+            cf.FillId = 0;
+            cf.BorderId = 1;
+            cf.FormatId = 0;
+            cf.ApplyFill = BooleanValue.FromBoolean(true);
+            cf.ApplyNumberFormat = BooleanValue.FromBoolean(true);
+            cfs.Append(cf);
+
+            // index 3 日期 白色底黑框
+            cf = new CellFormat();
+            cf.Alignment = alignment3;
+            cf.NumberFormatId = nfDateTime.NumberFormatId;
+            cf.FontId = 0;
+            cf.FillId = 0;
+            cf.BorderId = 1;
+            cf.FormatId = 0;
+            cf.ApplyFill = BooleanValue.FromBoolean(true);
+            cf.ApplyNumberFormat = BooleanValue.FromBoolean(true);
+            cfs.Append(cf);
+
+            nfs.Count = UInt32Value.FromUInt32((uint)nfs.ChildElements.Count);
+            cfs.Count = UInt32Value.FromUInt32((uint)cfs.ChildElements.Count);
+
+            ss.Append(nfs);
+            ss.Append(fts);
+            ss.Append(fills);
+            ss.Append(borders);
+            ss.Append(csfs);
+            ss.Append(cfs);
+
+            CellStyles css = new CellStyles();
+            CellStyle cs = new CellStyle();
+            cs.Name = StringValue.FromString("Normal");
+            cs.FormatId = 0;
+            cs.BuiltinId = 0;
+            css.Append(cs);
+            css.Count = UInt32Value.FromUInt32((uint)css.ChildElements.Count);
+            ss.Append(css);
+
+            DifferentialFormats dfs = new DifferentialFormats();
+            dfs.Count = 0;
+            ss.Append(dfs);
+
+            TableStyles tss = new TableStyles();
+            tss.Count = 0;
+            tss.DefaultTableStyle = StringValue.FromString("TableStyleMedium9");
+            tss.DefaultPivotStyle = StringValue.FromString("PivotStyleLight16");
+            ss.Append(tss);
+
+            return ss;
+        }
     }
     public enum CellReferencePartEnum
     {
